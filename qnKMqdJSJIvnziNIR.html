@@ -1,0 +1,305 @@
+<html><head><base href="." /><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cyber Security Adventure</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+.game-world {
+  background: url('/a/c85f70f6-ceed-49cb-849b-c0154bf4acaa');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  min-height: 100vh;
+  color: white;
+}
+
+.character {
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+  100% { transform: translateY(0px); }
+}
+
+.glow {
+  animation: glow 2s ease-in-out infinite;
+}
+
+@keyframes glow {
+  0% { filter: drop-shadow(0 0 5px #fff); }
+  50% { filter: drop-shadow(0 0 20px #fff); }
+  100% { filter: drop-shadow(0 0 5px #fff); }
+}
+
+.world-item {
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.world-item:hover {
+  transform: scale(1.05);
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 30px rgba(37, 99, 235, 0.5);
+}
+
+.world-item::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    45deg,
+    transparent,
+    rgba(255, 255, 255, 0.1),
+    transparent
+  );
+  transform: rotate(45deg);
+  animation: shine 3s infinite;
+}
+
+@keyframes shine {
+  0% { transform: translateX(-100%) rotate(45deg); }
+  100% { transform: translateX(100%) rotate(45deg); }
+}
+
+.character-container {
+  position: relative;
+  height: 200px;
+  margin-top: -100px;
+  pointer-events: none;
+}
+
+.character-svg {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  animation: float 3s ease-in-out infinite;
+}
+</style>
+
+<script>
+// Game state
+let currentQuestion = 0;
+const TOTAL_QUESTIONS = 5;
+let score = 0;
+let currentLesson = null;
+
+async function getAIResponse(topic, questionNumber) {
+  try {
+    const response = await fetch('/api/ai_completion', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        prompt: `Generate a cybersecurity lesson introduction (for first question only) and quiz question for the topic "${topic}". This is question ${questionNumber + 1} of ${TOTAL_QUESTIONS}.
+
+        <typescript-interface>
+        interface Response {
+          introduction?: string;
+          question: string;
+          options: string[];
+          correctAnswer: number;
+          explanation: string;
+        }
+        </typescript-interface>
+        
+        <example>
+        {
+          "introduction": "歡迎來到密碼安全世界！讓我們來學習如何創建安全的密碼。",
+          "question": "下列哪個密碼最安全？",
+          "options": [
+            "password123",
+            "MyP@ssw0rd2023!",
+            "qwerty",
+            "birthday"
+          ],
+          "correctAnswer": 1,
+          "explanation": "強密碼應包含大小寫字母、數字和特殊符號，且長度要足夠。"
+        }
+        </example>`,
+        data: {
+          topic,
+          questionNumber
+        }
+      }),
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Error:', error);
+    return null;
+  }
+}
+
+function getMilestoneMessage(score, total) {
+  const percentage = (score / total) * 100;
+  if (percentage === 100) return "🏆 完美！你是網路安全專家！";
+  if (percentage >= 80) return "🌟 太棒了！你已經掌握大部分的安全知識！";
+  if (percentage >= 60) return "👍 不錯的表現！還有進步空間！";
+  return "💪 繼續加油！安全意識需要持續培養！";
+}
+
+async function startLesson(topic) {
+  currentQuestion = 0;
+  score = 0;
+  currentLesson = topic;
+  await showNextQuestion();
+}
+
+async function showNextQuestion() {
+  const aiChat = document.getElementById('ai-chat');
+  if (currentQuestion >= TOTAL_QUESTIONS) {
+    // Show final score and milestone
+    const percentage = (score / TOTAL_QUESTIONS) * 100;
+    const milestoneMessage = getMilestoneMessage(score, TOTAL_QUESTIONS);
+    
+    aiChat.innerHTML = `
+      <div class="bg-blue-900/50 p-6 rounded-lg">
+        <h3 class="text-2xl font-bold mb-4">測驗完成！</h3>
+        <p class="text-xl mb-4">你的得分：${score}/${TOTAL_QUESTIONS} (${percentage}%)</p>
+        <div class="text-xl mb-4">${milestoneMessage}</div>
+        <button onclick="startLesson('${currentLesson}')" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
+          重新開始
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  aiChat.innerHTML = '載入中...';
+  
+  const lesson = await getAIResponse(currentLesson, currentQuestion);
+  if (!lesson) {
+    aiChat.innerHTML = '抱歉，載入失敗，請稍後再試。';
+    return;
+  }
+
+  const quizHtml = `
+    <div class="space-y-4">
+      ${currentQuestion === 0 && lesson.introduction ? `
+        <div class="mb-4 text-lg">${lesson.introduction}</div>
+      ` : ''}
+      <div class="bg-blue-900/30 p-4 rounded-lg">
+        <p class="font-bold mb-2">問題 ${currentQuestion + 1}/${TOTAL_QUESTIONS}</p>
+        <p class="text-lg mb-4">${lesson.question}</p>
+        <div class="space-y-2">
+          ${lesson.options.map((option, index) => `
+            <button 
+              onclick="checkAnswer(${index}, ${lesson.correctAnswer}, '${lesson.explanation}')" 
+              class="w-full text-left p-3 rounded bg-white/10 hover:bg-white/20 transition"
+            >
+              ${option}
+            </button>
+          `).join('')}
+        </div>
+      </div>
+      <div class="mt-4">
+        <p class="text-sm">目前得分: ${score}/${TOTAL_QUESTIONS}</p>
+      </div>
+    </div>
+  `;
+
+  aiChat.innerHTML = quizHtml;
+}
+
+function checkAnswer(selected, correct, explanation) {
+  const aiChat = document.getElementById('ai-chat');
+  const isCorrect = selected === correct;
+  
+  if (isCorrect) {
+    score++;
+  }
+
+  aiChat.innerHTML += `
+    <div class="mt-4 p-4 ${isCorrect ? 'bg-green-500/20' : 'bg-red-500/20'} rounded">
+      <p class="font-bold">${isCorrect ? '答對了！' : '答錯了！'}</p>
+      <p class="mt-2">${explanation}</p>
+      <button 
+        onclick="showNextQuestion()"
+        class="mt-4 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
+      >
+        下一題
+      </button>
+    </div>
+  `;
+
+  currentQuestion++;
+}
+
+// Make functions available globally
+window.startLesson = startLesson;
+window.checkAnswer = checkAnswer;
+window.showNextQuestion = showNextQuestion;
+</script>
+</head>
+<body>
+
+<div class="game-world">
+  <header class="p-4 text-center">
+    <h1 class="text-4xl font-bold mb-2">網路安全冒險島</h1>
+    <p class="text-xl mb-8">和 AI 助手一起學習資訊安全！</p>
+    
+    <div class="character-container">
+      <svg class="character-svg w-32 h-32" viewBox="0 0 100 100">
+        <circle cx="50" cy="30" r="20" fill="#FFD700"/>
+        <circle cx="43" cy="25" r="3" fill="#000"/>
+        <circle cx="57" cy="25" r="3" fill="#000"/>
+        <path d="M45 35 Q50 40 55 35" stroke="#000" fill="none" stroke-width="2"/>
+        <rect x="35" y="50" width="30" height="40" fill="#4169E1" rx="5"/>
+        <rect x="25" y="60" width="10" height="20" fill="#4169E1" rx="5"/>
+        <rect x="65" y="60" width="10" height="20" fill="#4169E1" rx="5"/>
+      </svg>
+    </div>
+  </header>
+
+  <div class="container mx-auto p-4">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <div class="world-item bg-blue-900/50 backdrop-blur-sm rounded-lg p-6 text-center cursor-pointer" onclick="startLesson('password')">
+        <svg class="w-24 h-24 mx-auto mb-4" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" fill="currentColor"/>
+          <path d="M12 6c-1.1 0-2 .9-2 2v4c0 1.1.9 2 2 2s2-.9 2-2V8c0-1.1-.9-2-2-2z" fill="currentColor"/>
+        </svg>
+        <h2 class="text-2xl font-bold mb-2">密碼保衛戰</h2>
+        <p>學習如何創建和保護強密碼</p>
+      </div>
+
+      <div class="world-item bg-blue-900/50 backdrop-blur-sm rounded-lg p-6 text-center cursor-pointer" onclick="startLesson('phishing')">
+        <svg class="w-24 h-24 mx-auto mb-4" viewBox="0 0 24 24" fill="none">
+          <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8l8 5 8-5v10zm-8-7L4 6h16l-8 5z" fill="currentColor"/>
+        </svg>
+        <h2 class="text-2xl font-bold mb-2">防詐騙任務</h2>
+        <p>識別和防範社交工程攻擊</p>
+      </div>
+
+      <div class="world-item bg-blue-900/50 backdrop-blur-sm rounded-lg p-6 text-center cursor-pointer" onclick="startLesson('privacy')">
+        <svg class="w-24 h-24 mx-auto mb-4" viewBox="0 0 24 24" fill="none">
+          <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z" fill="currentColor"/>
+        </svg>
+        <h2 class="text-2xl font-bold mb-2">隱私保衛者</h2>
+        <p>學習保護個人資料和隱私</p>
+      </div>
+    </div>
+
+    <div class="mt-8 bg-white/10 backdrop-blur-sm rounded-lg p-6">
+      <div class="flex items-center mb-4">
+        <svg class="w-12 h-12 glow" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" fill="white"/>
+          <circle cx="12" cy="12" r="3" fill="white"/>
+        </svg>
+        <h3 class="text-2xl font-bold ml-4">AI 安全顧問</h3>
+      </div>
+      <div id="ai-chat" class="bg-white/5 rounded p-4 min-h-[100px]">
+        點選上方的世界開始學習！
+      </div>
+    </div>
+  </div>
+</div>
+
+</body></html>
